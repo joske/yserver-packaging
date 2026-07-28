@@ -22,6 +22,10 @@ name: Build packages
 # On demand or on release only. NOT on push: every run is three full release
 # builds of the whole workspace, which is far too expensive to spend on an
 # ordinary commit. Edit a recipe, then run it yourself with workflow_dispatch.
+# One entry point for both humans and yserver's release workflow, which calls
+# `gh workflow run build.yml -f ref=<tag>`. Not repository_dispatch: that
+# would need a cross-repo token with "Contents: write" (enough to push commits
+# here), where workflow_dispatch needs only "Actions: write".
 on:
   workflow_dispatch:
     inputs:
@@ -29,10 +33,6 @@ on:
         description: yserver git ref to build (tag, branch or commit)
         default: master
         required: false
-  repository_dispatch:
-    # Sent by yserver's release workflow when a tag is cut; the payload
-    # carries the tag in client_payload.ref.
-    types: [yserver-release]
 
 permissions:
   contents: read
@@ -58,16 +58,10 @@ jobs:
       - name: Resolve the upstream ref to build
         id: resolve
         env:
-          EVENT: ${{ github.event_name }}
           INPUT_REF: ${{ inputs.ref }}
-          DISPATCH_REF: ${{ github.event.client_payload.ref }}
         run: |
           set -eu
-          case "$EVENT" in
-            workflow_dispatch)    ref="$INPUT_REF" ;;
-            repository_dispatch)  ref="$DISPATCH_REF" ;;
-            *)                    ref=master ;;
-          esac
+          ref="$INPUT_REF"
           [ -n "$ref" ] || ref=master
           # Constrain to what a git ref can legitimately look like, so a
           # hostile dispatch payload cannot smuggle anything downstream.
