@@ -36,7 +36,11 @@ makedepends="
 # Alpine policy splits documentation and man pages out of the main package;
 # default_doc picks up /usr/share/doc and /usr/share/man.
 subpackages="$pkgname-doc"
-source="$pkgname-$pkgver.tar.gz::https://github.com/joske/yserver/archive/v$pkgver.tar.gz"
+# The release asset, NOT github.com/.../archive/v$pkgver.tar.gz. GitHub
+# generates archive tarballs on demand and has changed their compression
+# before, which invalidates a pinned checksum; an uploaded release asset is
+# immutable, so sha512sums stays correct.
+source="https://github.com/joske/yserver/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz"
 
 # The test suite has not been validated in a hardware-less builder, so it is
 # not run here rather than being wired up on the assumption that it passes.

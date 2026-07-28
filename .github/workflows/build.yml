@@ -1,0 +1,268 @@
+name: Build packages
+
+# Builds the Fedora, Debian and Alpine packages inside that distro's own
+# container, so each one uses the real toolchain and policy checker rather
+# than an Ubuntu approximation.
+#
+# What this proves: the recipes build and pass policy lint.
+# What it CANNOT prove: that the resulting packages run. No GitHub runner has
+# a GPU, KMS or input devices, and neither rpmlint nor lintian models dlopen —
+# so a missing Vulkan loader or a stale seatd dependency would sail through
+# here and fail on a user's machine. Runtime dependency correctness has to be
+# checked by installing on real hardware.
+#
+# No Arch job: the Arch package is an AUR PKGBUILD maintained in its own
+# repository.
+#
+# Note on interpolation: every externally-supplied value (the dispatch ref)
+# reaches the shell through `env:`, never through direct ${{ }} substitution
+# inside `run:`. A ref is attacker-chosen text and would otherwise be a shell
+# injection point.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: yserver git ref to build (tag, branch or commit)
+        default: master
+        required: false
+  repository_dispatch:
+    # Sent by yserver's release workflow when a tag is cut; the payload
+    # carries the tag in client_payload.ref.
+    types: [yserver-release]
+
+permissions:
+  contents: read
+
+jobs:
+  # Produce ONE source tarball that every distro job consumes, so all three
+  # build byte-identical sources. Deliberately generated with `git archive`
+  # from the upstream checkout rather than downloaded from a GitHub release:
+  # that lets packaging be validated before a tag is ever published, which is
+  # the difference between this workflow being useful and being a
+  # chicken-and-egg problem.
+  source:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      - name: Check out packaging recipes
+        uses: actions/checkout@v4
+        with:
+          path: packaging
+
+      - name: Resolve the upstream ref to build
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_REF: ${{ inputs.ref }}
+          DISPATCH_REF: ${{ github.event.client_payload.ref }}
+        run: |
+          set -eu
+          case "$EVENT" in
+            workflow_dispatch)    ref="$INPUT_REF" ;;
+            repository_dispatch)  ref="$DISPATCH_REF" ;;
+            *)                    ref=master ;;
+          esac
+          [ -n "$ref" ] || ref=master
+          # Constrain to what a git ref can legitimately look like, so a
+          # hostile dispatch payload cannot smuggle anything downstream.
+          case "$ref" in
+            *[!A-Za-z0-9._/-]*|-*|*..*)
+              echo "::error::refusing suspicious ref: $ref"; exit 1 ;;
+          esac
+          printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
+          printf 'Building yserver ref: %s\n' "$ref"
+
+      - name: Check out yserver
+        uses: actions/checkout@v4
+        with:
+          repository: joske/yserver
+          ref: ${{ steps.resolve.outputs.ref }}
+          path: yserver
+          fetch-depth: 0
+
+      - name: Cross-check recipe versions against upstream
+        id: version
+        run: |
+          set -eu
+          cargo_ver=$(grep -m1 '^version' yserver/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          spec_ver=$(sed -n 's/^Version:[[:space:]]*//p' packaging/fedora/yserver.spec | head -n1)
+          deb_ver=$(sed -n '1s/.*(\([^-]*\)-.*/\1/p' packaging/debian/changelog)
+          apk_ver=$(sed -n 's/^pkgver=//p' packaging/alpine/APKBUILD | head -n1)
+
+          printf 'upstream Cargo.toml : %s\n' "$cargo_ver"
+          printf 'fedora/yserver.spec : %s\n' "$spec_ver"
+          printf 'debian/changelog    : %s\n' "$deb_ver"
+          printf 'alpine/APKBUILD     : %s\n' "$apk_ver"
+
+          # A mismatch is the failure this check exists for: %prep unpacks
+          # yserver-%{version}, so a stale recipe version does not produce a
+          # wrong package, it produces a confusing "directory not found".
+          fail=0
+          for v in "$spec_ver" "$deb_ver" "$apk_ver"; do
+            [ "$v" = "$cargo_ver" ] || fail=1
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::recipe version(s) disagree with upstream $cargo_ver — bump the recipes"
+            exit 1
+          fi
+          printf 'version=%s\n' "$cargo_ver" >> "$GITHUB_OUTPUT"
+
+      - name: Create the source tarball
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          git -C yserver archive --format=tar.gz \
+              --prefix="yserver-$V/" -o "../yserver-$V.tar.gz" HEAD
+          ls -l "yserver-$V.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-tarball
+          path: yserver-${{ steps.version.outputs.version }}.tar.gz
+          retention-days: 7
+
+  fedora:
+    needs: source
+    runs-on: ubuntu-latest
+    container: fedora:42
+    env:
+      V: ${{ needs.source.outputs.version }}
+    steps:
+      # git first: actions/checkout falls back to a slower REST download
+      # without it. rpmlint is not in the buildroot by default.
+      - name: Install build tooling
+        run: |
+          dnf -y install git rpm-build rpmdevtools rpmlint \
+              rust cargo gcc pkgconf-pkg-config just scdoc glslc \
+              libxshmfence-devel libxkbcommon-devel libinput-devel \
+              fontconfig-devel freetype-devel mesa-libgbm-devel \
+              systemd-devel systemd-rpm-macros
+          rustc --version
+
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-tarball
+
+      - name: Build the RPM
+        run: |
+          set -eu
+          rpmdev-setuptree
+          mv "yserver-$V.tar.gz" ~/rpmbuild/SOURCES/
+          rpmbuild -ba fedora/yserver.spec
+
+      - name: rpmlint
+        # Informational: rpmlint's defaults flag plenty that is fine for a
+        # package that is not aiming at Fedora-official status, so this must
+        # not gate the build.
+        continue-on-error: true
+        run: rpmlint ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.src.rpm
+
+      - name: Show package contents
+        run: rpm -qlp ~/rpmbuild/RPMS/*/yserver-"$V"*.rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora-rpms
+          path: |
+            ~/rpmbuild/RPMS/*/*.rpm
+            ~/rpmbuild/SRPMS/*.src.rpm
+
+  debian:
+    needs: source
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    env:
+      V: ${{ needs.source.outputs.version }}
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install build tooling
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+              git ca-certificates build-essential dpkg-dev debhelper devscripts lintian \
+              cargo rustc just scdoc glslc pkgconf \
+              libxshmfence-dev libxkbcommon-dev libinput-dev \
+              libfontconfig-dev libfreetype-dev libgbm-dev libudev-dev
+          rustc --version
+
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-tarball
+
+      - name: Build the .deb
+        run: |
+          set -eu
+          # debian/ lives in this repo, not in the upstream tarball, so the
+          # two have to be combined before dpkg-buildpackage will work.
+          tar xzf "yserver-$V.tar.gz"
+          cp -r debian "yserver-$V/debian"
+          # Binary-only build: a source build would additionally want the
+          # tarball renamed to yserver_$V.orig.tar.gz for 3.0 (quilt).
+          cd "yserver-$V"
+          dpkg-buildpackage -us -uc -b
+
+      - name: lintian
+        continue-on-error: true
+        run: lintian --no-tag-display-limit ./*.deb
+
+      - name: Show package contents
+        run: dpkg -c ./*.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debian-debs
+          path: "*.deb"
+
+  alpine:
+    needs: source
+    runs-on: ubuntu-latest
+    container: alpine:3.21
+    env:
+      V: ${{ needs.source.outputs.version }}
+    steps:
+      - name: Install build tooling
+        run: |
+          apk add --no-cache git alpine-sdk \
+              cargo just scdoc shaderc gcc musl-dev pkgconf \
+              libxshmfence-dev libxkbcommon-dev libinput-dev \
+              fontconfig-dev freetype-dev mesa-dev eudev-dev
+          rustc --version
+
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-tarball
+
+      - name: Build the .apk
+        run: |
+          set -eu
+          # abuild refuses to run as root unless forced; -F is the documented
+          # escape hatch and avoids creating a build user in a throwaway
+          # container. It still needs a signing key.
+          abuild-keygen -a -i -n
+          # Point abuild at the local tarball so it does not fetch Source over
+          # the network, and so it checksums exactly what we built.
+          cp "yserver-$V.tar.gz" alpine/
+          cd alpine
+          export SRCDEST="$PWD"
+          # The committed sha512sums are empty until a release tarball is
+          # published; recompute for whatever ref this run built.
+          abuild checksum
+          abuild -F -r
+
+      - name: Show package contents
+        run: tar tzf /root/packages/*/x86_64/yserver-"$V"*.apk | sort
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alpine-apks
+          path: /root/packages/*/x86_64/*.apk

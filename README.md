@@ -88,6 +88,33 @@ A release tarball has no `.git`, so `build.rs` stamps the literal string
 exports `YSERVER_GIT_COMMIT` before building. Substitute the real release
 commit if you have it; the tag is the next-best truthful answer.
 
+## CI
+
+`.github/workflows/build.yml` builds all three packages, each inside its own
+distro container (`fedora:42`, `debian:trixie`, `alpine:3.21`), so each uses
+that distro's real toolchain and policy checker. It runs on push/PR here, on
+`workflow_dispatch` with a ref, and on a `repository_dispatch` that yserver's
+release workflow sends when a tag is cut.
+
+The source tarball is generated once with `git archive` from the upstream
+checkout and shared by all three jobs, rather than downloaded from a release.
+That means packaging can be validated *before* a tag exists, and all three
+build identical sources. A job also fails the run if the version in any recipe
+disagrees with upstream's `Cargo.toml` — a stale recipe version otherwise
+surfaces as a confusing "directory not found" from `%prep`.
+
+**What CI does not prove.** It shows the recipes build and lint. It cannot
+show the packages *run*: no runner has a GPU, KMS or input devices, and
+neither `rpmlint` nor `lintian` models `dlopen`. A missing Vulkan loader or a
+stale `seatd` dependency passes CI and fails on a user's machine. Runtime
+dependency correctness needs a real install on real hardware.
+
+Checksummed recipes point at the **release asset**, not
+`github.com/.../archive/v$ver.tar.gz`. GitHub generates archive tarballs on
+demand and has changed their compression before, which silently invalidates
+pinned hashes downstream. Fedora still uses the auto-generated archive, since
+RPM does not verify source checksums and it is the idiomatic COPR form.
+
 ## Status
 
 Written against yserver 1.4.0, the first release with the install contract.
