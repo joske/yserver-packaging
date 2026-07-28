@@ -206,6 +206,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: source-tarball
+          if-no-files-found: error
           path: yserver-${{ steps.version.outputs.version }}.tar.gz
           retention-days: 7
 
@@ -246,12 +247,36 @@ jobs:
         continue-on-error: true
         run: rpmlint ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.src.rpm
 
-      - name: Show package contents
-        run: rpm -qlp ~/rpmbuild/RPMS/*/yserver-"$V"*.rpm
+      - name: Verify package contents
+        run: |
+          set -eu
+          main=$(ls ~/rpmbuild/RPMS/*/yserver-"$V"-*.rpm 2>/dev/null | grep -v debug | head -n1)
+          [ -n "$main" ] || { echo "::error::no yserver rpm built"; exit 1; }
+          echo "=== $main ==="
+          listing=$(rpm -qlp "$main")
+          printf '%s\n' "$listing"
+
+          # Assert rather than display: fail the job when an expected path is
+          # absent instead of printing a listing nobody reads.
+          for want in usr/bin/yserver usr/bin/starty; do
+            printf '%s\n' "$listing" | grep -qE "(^|/)$want\$" \
+              || { echo "::error::$want missing from $main"; exit 1; }
+          done
+          for want in yserver starty; do
+            printf '%s\n' "$listing" | grep -qE "usr/share/man/man1/$want\.1(\.gz)?\$" \
+              || { echo "::error::man1/$want.1 missing from $main"; exit 1; }
+          done
+          printf '%s\n' "$listing" | grep -qE "tmpfiles\.d/yserver\.conf\$" \
+            || { echo "::error::tmpfiles.d/yserver.conf missing from $main"; exit 1; }
+          echo "package contents verified"
 
       - uses: actions/upload-artifact@v7
         with:
           name: fedora-rpms
+          # Without this the action only WARNS when nothing matches and the
+          # job still passes — which is how a run reported success while
+          # uploading no packages at all.
+          if-no-files-found: error
           path: |
             ~/rpmbuild/RPMS/*/*.rpm
             ~/rpmbuild/SRPMS/*.src.rpm
@@ -319,7 +344,7 @@ jobs:
         continue-on-error: true
         run: lintian --no-tag-display-limit ./*.deb
 
-      - name: Show package contents
+      - name: Verify package contents
         # One .deb at a time: `dpkg -c` takes exactly one argument, and the
         # build produces two packages (yserver plus the automatic
         # yserver-dbgsym, since the release profile carries debug info).
@@ -330,9 +355,26 @@ jobs:
             dpkg -c "$d"
           done
 
+          # Assert rather than display, and fail the job when an expected path
+          # is absent. Command substitution so a failure cannot hide behind a
+          # pipeline's exit status.
+          main="yserver_${V}-1_amd64.deb"
+          [ -f "$main" ] || { echo "::error::$main not built"; exit 1; }
+          listing=$(dpkg -c "$main")
+          for want in usr/bin/yserver usr/bin/starty; do
+            printf '%s\n' "$listing" | grep -qE "(^|/)$want\$" \
+              || { echo "::error::$want missing from $main"; exit 1; }
+          done
+          for want in yserver starty; do
+            printf '%s\n' "$listing" | grep -qE "usr/share/man/man1/$want\.1(\.gz)?\$" \
+              || { echo "::error::man1/$want.1 missing from $main"; exit 1; }
+          done
+          echo "package contents verified"
+
       - uses: actions/upload-artifact@v7
         with:
           name: debian-debs
+          if-no-files-found: error
           path: "*.deb"
 
   alpine:
@@ -412,12 +454,35 @@ jobs:
         # and the build produces yserver plus the yserver-doc subpackage.
         run: |
           set -eu
+          # No `tar ... | sort`: POSIX sh has no pipefail, so a pipeline's
+          # status is the LAST command's and `sort` succeeding would mask tar
+          # failing. That is exactly how a previous run reported success while
+          # listing nothing at all.
+          [ -e apks/yserver-"$V"-r0.apk ] || { echo "::error::no yserver apk in apks/"; exit 1; }
           for a in apks/*.apk; do
             echo "=== $a ==="
-            tar tzf "$a" | sort
+            listing=$(tar tzf "$a")
+            printf '%s\n' "$listing" | sort
           done
+
+          # Assert, do not merely display. A step that only lists is how the
+          # empty-glob bug survived: it printed nothing and still passed.
+          # Man pages may or may not be gzipped depending on the distro, so
+          # the pattern tolerates both rather than risking a false failure.
+          main=$(tar tzf apks/yserver-"$V"-r0.apk)
+          for want in usr/bin/yserver usr/bin/starty; do
+            printf '%s\n' "$main" | grep -qE "(^|/)$want\$" \
+              || { echo "::error::$want missing from the yserver apk"; exit 1; }
+          done
+          doc=$(tar tzf apks/yserver-doc-"$V"-r0.apk)
+          for want in yserver starty; do
+            printf '%s\n' "$doc" | grep -qE "usr/share/man/man1/$want\.1(\.gz)?\$" \
+              || { echo "::error::man1/$want.1 missing from the yserver-doc apk"; exit 1; }
+          done
+          echo "package contents verified"
 
       - uses: actions/upload-artifact@v7
         with:
           name: alpine-apks
+          if-no-files-found: error
           path: apks/*.apk
