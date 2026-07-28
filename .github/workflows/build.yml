@@ -292,6 +292,11 @@ jobs:
         with:
           toolchain: stable
           cache: false
+          # The action defaults to RUSTFLAGS="-D warnings". That belongs in
+          # upstream's own CI, not in a packaging build: it would turn any
+          # future compiler warning into a failed package for a distro that
+          # happens to ship a newer rustc.
+          rustflags: ""
 
       - name: Show the toolchain actually in use
         run: |
@@ -315,7 +320,15 @@ jobs:
         run: lintian --no-tag-display-limit ./*.deb
 
       - name: Show package contents
-        run: dpkg -c ./*.deb
+        # One .deb at a time: `dpkg -c` takes exactly one argument, and the
+        # build produces two packages (yserver plus the automatic
+        # yserver-dbgsym, since the release profile carries debug info).
+        run: |
+          set -eu
+          for d in ./*.deb; do
+            echo "=== $d ==="
+            dpkg -c "$d"
+          done
 
       - uses: actions/upload-artifact@v7
         with:
@@ -382,7 +395,14 @@ jobs:
           abuild -F -r
 
       - name: Show package contents
-        run: tar tzf /root/packages/*/x86_64/yserver-"$V"*.apk | sort
+        # Same one-argument caution as the Debian job: tar takes a single -f,
+        # and the build produces yserver plus the yserver-doc subpackage.
+        run: |
+          set -eu
+          for a in /root/packages/*/x86_64/*.apk; do
+            echo "=== $a ==="
+            tar tzf "$a" | sort
+          done
 
       - uses: actions/upload-artifact@v7
         with:
