@@ -16,15 +16,15 @@
 # ── COPR ─────────────────────────────────────────────────────────────────────
 #   Upload this spec; COPR fetches Source0 from GitHub and builds for every
 #   enabled chroot/arch. The BuildRequires below are all arch-neutral package
-#   names present on every Fedora arch (x86_64, aarch64, …), so no %ifarch
+#   names present on every Fedora arch (x86_64, aarch64, …), so no %%ifarch
 #   guards are needed.
 #
-#   IMPORTANT: cargo downloads crate dependencies from crates.io during %build.
+#   IMPORTANT: cargo downloads crate dependencies from crates.io during %%build.
 #   COPR builds run in mock with networking DISABLED by default, so you must
 #   tick "Enable internet access during builds" in the COPR project settings
 #   (or `copr-cli modify <project> --enable-net on`). Alternatively, ship a
 #   `cargo vendor` tree in the tarball and build with `--offline`; see the
-#   commented block in %build.
+#   commented block in %%build.
 
 %global crate_name yserver
 
@@ -176,6 +176,10 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %{_docdir}/%{name}/setup.md
 %{_docdir}/%{name}/examples/lightdm-99-yserver.conf
 %{_tmpfilesdir}/%{name}.conf
+# Paths created by a tmpfiles.d snippet must be listed as %%ghost, otherwise
+# rpmlint reports tmpfile-not-in-filelist. The directory is created at install
+# time by %%tmpfiles_create, not shipped in the payload.
+%ghost %dir /tmp/.X11-unix
 
 %changelog
 * Tue Jul 28 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.4.0-1

@@ -76,7 +76,7 @@ Consequences per distro:
   (`rustc (>= 1.87)` would be unsatisfiable there and `dpkg-buildpackage`
   would refuse to start).
 - **Alpine** — uses the distro `cargo`, so the image has to be new enough;
-  3.21 is not.
+  3.21 ships 1.83 and is not; 3.24 ships 1.96.
 
 This matters for *building*, never for *installing*: the packages contain a
 compiled binary, so users need no Rust toolchain whatever their distro ships.
@@ -100,7 +100,7 @@ runtime.
 | Vulkan loader | `libvulkan.so.1` is dlopened by `ash` | `vulkan-loader` | `libvulkan1` | `vulkan-loader` |
 | A Vulkan ICD | runtime driver, not linked | `mesa-vulkan-drivers` | `mesa-vulkan-drivers` | `mesa-vulkan-*` |
 | `xauth` | `starty` execs it, and refuses to start without | `xorg-x11-xauth` | `xauth` | `xauth` |
-| `mcookie` | `starty` execs it, same check | `util-linux` | `util-linux` | `mcookie` |
+| `mcookie` | `starty` execs it, same check | `util-linux` | *none — Essential* | `mcookie` |
 | XKB data | keymap rules read at runtime | `xkeyboard-config` | `xkb-data` | `xkeyboard-config` |
 | X core fonts | *recommend only* — falls back to built-ins | `xorg-x11-fonts-*` | `xfonts-base` | `font-misc-misc` |
 
@@ -121,14 +121,22 @@ commit if you have it; the tag is the next-best truthful answer.
 ## CI
 
 `.github/workflows/build.yml` builds all three packages, each inside its own
-distro container (`fedora:42`, `debian:trixie`, `alpine:3.21`), so each uses
+distro container (`fedora:42`, `debian:trixie`, `alpine:3.24`), so each uses
 that distro's real toolchain and policy checker.
 
-It runs **on demand or on release only** — `workflow_dispatch` with a ref, or
-a `repository_dispatch` that yserver's release workflow sends when a tag is
-cut. Deliberately not on push: every run is three full release builds of the
-whole workspace, which is far too expensive to spend on an ordinary commit.
-Edit a recipe, then dispatch a run yourself.
+It runs **on demand or on release only**, through a single `workflow_dispatch`
+entry point taking the upstream ref. yserver's release workflow calls the same
+one with `gh workflow run build.yml -f ref=<tag>` and waits for it to succeed
+before publishing, so a package that does not build cannot leave a published
+release behind. Deliberately not on push: every run is three full release
+builds of the whole workspace, far too expensive for an ordinary commit.
+
+`rpmlint` and `lintian` are **blocking**. Both were once
+`continue-on-error` and both duly reported real problems while the job stayed
+green — a tmpfiles path missing from `%files`, unescaped macros in spec
+comments, and an unversioned dependency on Debian's Essential `util-linux`.
+Known-irrelevant tags are filtered by name (`fedora/rpmlint.toml`, and
+`--suppress-tags` for lintian) so they cannot mask anything else.
 
 The source tarball is generated once with `git archive` from the upstream
 checkout and shared by all three jobs, rather than downloaded from a release.

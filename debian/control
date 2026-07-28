@@ -32,8 +32,12 @@ Depends:
  ${misc:Depends},
  libvulkan1,
  xauth,
- util-linux,
  xkb-data,
+# NOT util-linux, even though starty(1) needs mcookie from it: util-linux is
+# an Essential package, always present, and depending on it unversioned is a
+# lintian error (depends-on-essential-package-without-using-version).
+# Alpine needs the opposite treatment — it splits util-linux, so there the
+# dependency is the standalone `mcookie` package.
 Recommends:
  mesa-vulkan-drivers,
  xfonts-base,

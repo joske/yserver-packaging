@@ -235,11 +235,12 @@ jobs:
           rpmbuild -ba fedora/yserver.spec
 
       - name: rpmlint
-        # Informational: rpmlint's defaults flag plenty that is fine for a
-        # package that is not aiming at Fedora-official status, so this must
-        # not gate the build.
-        continue-on-error: true
-        run: rpmlint ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.src.rpm
+        # Blocking. Previously this was continue-on-error, which meant rpmlint
+        # exited 64 on real findings and the job stayed green — the packages
+        # shipped with a tmpfiles path missing from %files and unescaped macros
+        # in spec comments. Noise is filtered by name in fedora/rpmlint.toml so
+        # it cannot hide anything else.
+        run: rpmlint -c fedora/rpmlint.toml ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.src.rpm
 
       - name: Verify package contents
         run: |
@@ -335,8 +336,18 @@ jobs:
           dpkg-buildpackage -us -uc -b
 
       - name: lintian
-        continue-on-error: true
-        run: lintian --no-tag-display-limit ./*.deb
+        # Blocking, for the same reason as rpmlint: as continue-on-error it
+        # exited 2 on a real error (an unversioned dependency on the Essential
+        # package util-linux) and the job stayed green.
+        #
+        # --tag-display-limit 0 replaces the deprecated --no-tag-display-limit.
+        # Only initial-upload-closes-no-bugs is suppressed: it wants the
+        # changelog to close an ITP bug, which applies to a package being
+        # uploaded to the Debian archive, and this one is not.
+        run: |
+          lintian --tag-display-limit 0 \
+                  --suppress-tags initial-upload-closes-no-bugs \
+                  ./*.deb
 
       - name: Verify package contents
         # One .deb at a time: `dpkg -c` takes exactly one argument, and the
