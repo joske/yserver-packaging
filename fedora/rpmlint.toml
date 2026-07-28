@@ -15,4 +15,13 @@ Filters = [
     # a GPU, KMS and input devices — none of which exist in a build chroot.
     # Running a subset would buy a green check rather than confidence.
     "no-%check-section",
+
+    # The package ships a tmpfiles.d snippet for /tmp/.X11-unix but does not
+    # list that path in %files, which rpmlint flags. Listing it is worse: as a
+    # dotted path under /tmp it produces dir-or-file-in-tmp and
+    # non-standard-dir-perm (both errors) plus zero-perms-ghost and
+    # hidden-file-or-dir — measured, not guessed. The directory is a volatile,
+    # world-writable mount point shared with any other X server, so no package
+    # should own it.
+    "tmpfile-not-in-filelist",
 ]

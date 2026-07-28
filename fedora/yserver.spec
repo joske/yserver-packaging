@@ -176,10 +176,16 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %{_docdir}/%{name}/setup.md
 %{_docdir}/%{name}/examples/lightdm-99-yserver.conf
 %{_tmpfilesdir}/%{name}.conf
-# Paths created by a tmpfiles.d snippet must be listed as %%ghost, otherwise
-# rpmlint reports tmpfile-not-in-filelist. The directory is created at install
-# time by %%tmpfiles_create, not shipped in the payload.
-%ghost %dir /tmp/.X11-unix
+# /tmp/.X11-unix is deliberately NOT %%ghost-ed here. Listing it makes rpmlint
+# emit two errors and two more warnings (dir-or-file-in-tmp,
+# non-standard-dir-perm, zero-perms-ghost, hidden-file-or-dir) because it is a
+# dotted path under /tmp — strictly worse than the single
+# tmpfile-not-in-filelist warning that ghosting it was meant to silence, and
+# that warning is filtered with a reason in rpmlint.toml.
+#
+# It is also the right call regardless of the linter: the directory is a
+# volatile, world-writable, shared mount point that any X server may create,
+# so no package should claim ownership of it.
 
 %changelog
 * Tue Jul 28 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.4.0-1
