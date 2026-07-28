@@ -399,12 +399,20 @@ jobs:
           abuild -F checksum
           abuild -F -r
 
+          # Collect the output into the workspace. REPODEST is
+          # $HOME/packages/<name-of-startdir's-parent>/$arch, and HOME here is
+          # /github/home rather than /root; upload-artifact does not expand
+          # shell variables or ~, so copy to a known path instead of guessing.
+          mkdir -p "$GITHUB_WORKSPACE/apks"
+          cp "$HOME"/packages/*/*/*.apk "$GITHUB_WORKSPACE/apks/"
+          ls -l "$GITHUB_WORKSPACE/apks/"
+
       - name: Show package contents
         # Same one-argument caution as the Debian job: tar takes a single -f,
         # and the build produces yserver plus the yserver-doc subpackage.
         run: |
           set -eu
-          for a in /root/packages/*/x86_64/*.apk; do
+          for a in apks/*.apk; do
             echo "=== $a ==="
             tar tzf "$a" | sort
           done
@@ -412,4 +420,4 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: alpine-apks
-          path: /root/packages/*/x86_64/*.apk
+          path: apks/*.apk
