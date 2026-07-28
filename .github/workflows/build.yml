@@ -51,7 +51,7 @@ jobs:
       ref: ${{ steps.resolve.outputs.ref }}
     steps:
       - name: Check out packaging recipes
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: packaging
 
@@ -79,12 +79,51 @@ jobs:
           printf 'Building yserver ref: %s\n' "$ref"
 
       - name: Check out yserver
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: joske/yserver
           ref: ${{ steps.resolve.outputs.ref }}
           path: yserver
           fetch-depth: 0
+
+      - name: Sanity-check the recipes before building anything
+        # Every one of these is cheap and every one of them otherwise surfaces
+        # as a failure three long container builds later.
+        run: |
+          set -eu
+          fail=0
+
+          # Shell syntax of the APKBUILD, and make(1) syntax of debian/rules.
+          sh -n packaging/alpine/APKBUILD || fail=1
+
+          # Required files. A missing debian/source/format or an unexecutable
+          # debian/rules fails deep inside dpkg-buildpackage.
+          for f in packaging/fedora/yserver.spec packaging/debian/control \
+                   packaging/debian/rules packaging/debian/changelog \
+                   packaging/debian/copyright packaging/debian/source/format \
+                   packaging/alpine/APKBUILD; do
+            [ -f "$f" ] || { echo "::error::missing $f"; fail=1; }
+          done
+          [ -x packaging/debian/rules ] || { echo "::error::debian/rules is not executable"; fail=1; }
+
+          # The recipes call `just install`/`just man`; upstream must actually
+          # provide them at this ref.
+          for r in man install; do
+            grep -qE "^$r:" yserver/Justfile \
+              || { echo "::error::upstream Justfile has no '$r' recipe at this ref"; fail=1; }
+          done
+
+          # Inputs `just install` preflights. If upstream moved or renamed one,
+          # every recipe here breaks identically.
+          for f in yserver/LICENSE yserver/docs/setup.md yserver/starty \
+                   yserver/examples/lightdm-99-yserver.conf.in \
+                   yserver/examples/yserver.tmpfiles \
+                   yserver/docs/man/yserver.1.scd yserver/docs/man/starty.1.scd; do
+            [ -f "$f" ] || { echo "::error::upstream is missing $f"; fail=1; }
+          done
+
+          [ "$fail" -eq 0 ] || exit 1
+          echo "recipe sanity checks passed"
 
       - name: Cross-check recipe versions against upstream
         id: version
@@ -113,6 +152,48 @@ jobs:
           fi
           printf 'version=%s\n' "$cargo_ver" >> "$GITHUB_OUTPUT"
 
+      - name: Check the release asset a real build would fetch
+        # CI feeds abuild a local tarball, so a missing release asset passes
+        # here and fails for actual users — Alpine's source= (and the AUR
+        # PKGBUILD's) points at the release download URL. Warn rather than
+        # fail: dispatching against a branch before any release exists is a
+        # legitimate way to use this workflow.
+        env:
+          REF: ${{ steps.resolve.outputs.ref }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          case "$REF" in
+            v[0-9]*) ;;
+            *) echo "::notice::ref $REF is not a release tag — skipping asset check"; exit 0 ;;
+          esac
+          url="https://github.com/joske/yserver/releases/download/$REF/yserver-$V.tar.gz"
+          if ! curl -sSLf -o asset.tar.gz "$url"; then
+            echo "::warning::release asset missing: $url"
+            echo "::warning::checksummed recipes (Alpine, AUR) will fail for users until it is uploaded"
+            exit 0
+          fi
+          echo "release asset present: $url"
+
+          # Verify the COMMITTED checksum against the published asset. The
+          # build jobs feed abuild a locally generated tarball and let
+          # `abuild checksum` recompute, so a wrong committed sha512 would
+          # otherwise pass every CI run and fail only for real users.
+          committed=$(sed -n '/^sha512sums=/,/"$/p' packaging/alpine/APKBUILD \
+                      | grep -oE '^[0-9a-f]{128}' | head -n1 || true)
+          if [ -z "$committed" ]; then
+            echo "::warning::alpine/APKBUILD has no sha512sum yet — run 'abuild checksum' and commit it"
+            exit 0
+          fi
+          actual=$(sha512sum asset.tar.gz | cut -d' ' -f1)
+          if [ "$committed" != "$actual" ]; then
+            echo "::error::alpine/APKBUILD sha512sum does not match the published asset"
+            echo "  committed: $committed"
+            echo "  actual:    $actual"
+            exit 1
+          fi
+          echo "alpine/APKBUILD sha512sum matches the published asset"
+
       - name: Create the source tarball
         env:
           V: ${{ steps.version.outputs.version }}
@@ -122,7 +203,7 @@ jobs:
               --prefix="yserver-$V/" -o "../yserver-$V.tar.gz" HEAD
           ls -l "yserver-$V.tar.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: source-tarball
           path: yserver-${{ steps.version.outputs.version }}.tar.gz
@@ -146,8 +227,8 @@ jobs:
               systemd-devel systemd-rpm-macros
           rustc --version
 
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: source-tarball
 
@@ -168,7 +249,7 @@ jobs:
       - name: Show package contents
         run: rpm -qlp ~/rpmbuild/RPMS/*/yserver-"$V"*.rpm
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: fedora-rpms
           path: |
@@ -193,8 +274,8 @@ jobs:
               libfontconfig-dev libfreetype-dev libgbm-dev libudev-dev
           rustc --version
 
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: source-tarball
 
@@ -217,7 +298,7 @@ jobs:
       - name: Show package contents
         run: dpkg -c ./*.deb
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: debian-debs
           path: "*.deb"
@@ -237,8 +318,8 @@ jobs:
               fontconfig-dev freetype-dev mesa-dev eudev-dev
           rustc --version
 
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: source-tarball
 
@@ -262,7 +343,7 @@ jobs:
       - name: Show package contents
         run: tar tzf /root/packages/*/x86_64/yserver-"$V"*.apk | sort
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: alpine-apks
           path: /root/packages/*/x86_64/*.apk
