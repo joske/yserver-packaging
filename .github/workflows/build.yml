@@ -19,10 +19,10 @@ name: Build packages
 # inside `run:`. A ref is attacker-chosen text and would otherwise be a shell
 # injection point.
 
+# On demand or on release only. NOT on push: every run is three full release
+# builds of the whole workspace, which is far too expensive to spend on an
+# ordinary commit. Edit a recipe, then run it yourself with workflow_dispatch.
 on:
-  push:
-    branches: [master]
-  pull_request:
   workflow_dispatch:
     inputs:
       ref:

@@ -92,9 +92,13 @@ commit if you have it; the tag is the next-best truthful answer.
 
 `.github/workflows/build.yml` builds all three packages, each inside its own
 distro container (`fedora:42`, `debian:trixie`, `alpine:3.21`), so each uses
-that distro's real toolchain and policy checker. It runs on push/PR here, on
-`workflow_dispatch` with a ref, and on a `repository_dispatch` that yserver's
-release workflow sends when a tag is cut.
+that distro's real toolchain and policy checker.
+
+It runs **on demand or on release only** — `workflow_dispatch` with a ref, or
+a `repository_dispatch` that yserver's release workflow sends when a tag is
+cut. Deliberately not on push: every run is three full release builds of the
+whole workspace, which is far too expensive to spend on an ordinary commit.
+Edit a recipe, then dispatch a run yourself.
 
 The source tarball is generated once with `git archive` from the upstream
 checkout and shared by all three jobs, rather than downloaded from a release.
