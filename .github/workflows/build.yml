@@ -34,6 +34,16 @@ on:
         default: master
         required: false
 
+# Puts the built ref in the run's title, so yserver's release workflow can
+# correlate the run it dispatched instead of assuming "newest run wins".
+run-name: packages for ${{ inputs.ref }}
+
+# One build per ref at a time; a second dispatch for the same ref queues rather
+# than racing, which also keeps the correlation above unambiguous.
+concurrency:
+  group: build-${{ inputs.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
