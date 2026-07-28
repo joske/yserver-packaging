@@ -2,10 +2,14 @@ Source: yserver
 Section: x11
 Priority: optional
 Maintainer: Jos Dehaes <jos.dehaes@gmail.com>
+# No cargo/rustc: yserver needs Rust >= 1.87 (u32::is_multiple_of,
+# cast_unsigned) and Debian trixie ships 1.85, so `rustc (>= 1.87)` would be
+# unsatisfiable and dpkg-buildpackage would refuse before starting. The
+# toolchain is supplied out of band (rustup / the CI rust action) and must be
+# on PATH. That is fine for a .deb we ship ourselves — installing it needs no
+# toolchain at all — but it does mean this is not archive-policy clean.
 Build-Depends:
  debhelper-compat (= 13),
- cargo (>= 1.85),
- rustc (>= 1.85),
  just,
  scdoc,
  glslc,

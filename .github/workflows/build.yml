@@ -265,19 +265,38 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Install build tooling
+        # No cargo/rustc here: trixie ships 1.85 and yserver needs 1.87
+        # (u32::is_multiple_of, cast_unsigned). The toolchain comes from rustup
+        # below instead. That is fine for a .deb we ship ourselves — users
+        # install a compiled binary and never need a Rust toolchain — but it
+        # would disqualify the package from the Debian archive proper, which
+        # requires offline builds from declared build-dependencies only.
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-              git ca-certificates build-essential dpkg-dev debhelper devscripts lintian \
-              cargo rustc just scdoc glslc pkgconf \
+              git curl ca-certificates build-essential dpkg-dev debhelper devscripts lintian \
+              just scdoc glslc pkgconf \
               libxshmfence-dev libxkbcommon-dev libinput-dev \
               libfontconfig-dev libfreetype-dev libgbm-dev libudev-dev
-          rustc --version
 
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: source-tarball
+
+      # JS actions run inside the job container, so this installs a current
+      # toolchain into the Debian container itself. Caching is off: the action
+      # keys the cache on a workspace-root Cargo.lock, and this workspace root
+      # holds packaging recipes, not the crate.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+
+      - name: Show the toolchain actually in use
+        run: |
+          rustc --version
+          cargo --version
 
       - name: Build the .deb
         run: |
@@ -306,7 +325,7 @@ jobs:
   alpine:
     needs: source
     runs-on: ubuntu-latest
-    container: alpine:3.21
+    container: alpine:3.24
     env:
       V: ${{ needs.source.outputs.version }}
     steps:
@@ -329,7 +348,24 @@ jobs:
           # abuild refuses to run as root unless forced; -F is the documented
           # escape hatch and avoids creating a build user in a throwaway
           # container. It still needs a signing key.
-          abuild-keygen -a -i -n
+          #
+          # PACKAGER must be set BEFORE keygen: the key is named after it, and
+          # with it unset abuild-keygen produces "-<hex>.rsa.pub" — a leading
+          # dash that every later command would parse as an option.
+          export PACKAGER="Jos Dehaes <jos.dehaes@gmail.com>"
+          # abuild shells package installs through $SUDO_APK (default
+          # abuild-apk, which falls back to doas when not root). We are root,
+          # so pin it to plain apk and remove the whole doas dependency class
+          # from this job rather than fixing one call site at a time.
+          export SUDO_APK=apk
+          # Deliberately NOT `abuild-keygen -i`: that shells out to `doas` to
+          # copy the pubkey into /etc/apk/keys even when already root, and
+          # alpine-sdk does not depend on doas. Installing doas would not be a
+          # reliable fix either — without a doas.conf it can refuse for uid 0
+          # too. As root the install is just a cp.
+          abuild-keygen -a -n
+          mkdir -p /etc/apk/keys
+          cp "$HOME"/.abuild/*.rsa.pub /etc/apk/keys/
           # Point abuild at the local tarball so it does not fetch Source over
           # the network, and so it checksums exactly what we built.
           cp "yserver-$V.tar.gz" alpine/

@@ -59,6 +59,36 @@ policy, and each recipe here does exactly that for its licence file.
 Binaries are staged unstripped and man pages uncompressed; stripping,
 debuginfo extraction and compression belong to distro tooling.
 
+## Rust toolchain
+
+yserver needs **Rust >= 1.87**, not 1.85. Edition 2024 only accounts for
+1.85; the real floor comes from two library features stabilised in 1.87 —
+`u32::is_multiple_of` (`unsigned_is_multiple_of`) and `cast_unsigned`
+(`integer_sign_cast`). Upstream's `rust-toolchain.toml` pins
+`channel = "stable"`, so developers always have a new enough compiler and
+this only shows up when packaging.
+
+Consequences per distro:
+
+- **Fedora 42** — distro `rust`/`cargo` are new enough. Nothing special.
+- **Debian trixie** — ships 1.85, so the build uses a rustup-supplied
+  toolchain and `debian/control` does *not* Build-Depend on `cargo`/`rustc`
+  (`rustc (>= 1.87)` would be unsatisfiable there and `dpkg-buildpackage`
+  would refuse to start).
+- **Alpine** — uses the distro `cargo`, so the image has to be new enough;
+  3.21 is not.
+
+This matters for *building*, never for *installing*: the packages contain a
+compiled binary, so users need no Rust toolchain whatever their distro ships.
+
+It does mean the Debian package is **not** archive-policy clean — Debian
+proper requires offline builds from declared build-dependencies only. Getting
+into the archive would first need the MSRV lowered to whatever stable ships
+(replacing those two APIs with `% n == 0` and `as u32` is mechanical, ~67
+sites), ideally with `msrv` set in a `clippy.toml` so
+`clippy::incompatible_msrv` — on by default — fails CI on any future
+too-new API.
+
 ## Things no dependency scanner can find
 
 None of these appear in the ELF headers, so every recipe declares them by
