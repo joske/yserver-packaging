@@ -343,8 +343,13 @@ jobs:
       V: ${{ needs.source.outputs.version }}
     steps:
       - name: Install build tooling
+        # `apk update` first, and deliberately NOT `--no-cache`: that flag
+        # fetches the package index transiently and discards it, so when
+        # `abuild -r` later installs depends+makedepends as a virtual package,
+        # apk has no index and reports every dependency as "no such package".
         run: |
-          apk add --no-cache git alpine-sdk \
+          apk update
+          apk add git alpine-sdk \
               cargo just scdoc shaderc gcc musl-dev pkgconf \
               libxshmfence-dev libxkbcommon-dev libinput-dev \
               fontconfig-dev freetype-dev mesa-dev eudev-dev

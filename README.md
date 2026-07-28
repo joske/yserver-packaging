@@ -100,7 +100,7 @@ runtime.
 | Vulkan loader | `libvulkan.so.1` is dlopened by `ash` | `vulkan-loader` | `libvulkan1` | `vulkan-loader` |
 | A Vulkan ICD | runtime driver, not linked | `mesa-vulkan-drivers` | `mesa-vulkan-drivers` | `mesa-vulkan-*` |
 | `xauth` | `starty` execs it, and refuses to start without | `xorg-x11-xauth` | `xauth` | `xauth` |
-| `mcookie` | `starty` execs it, same check | `util-linux` | `util-linux` | `util-linux` |
+| `mcookie` | `starty` execs it, same check | `util-linux` | `util-linux` | `mcookie` |
 | XKB data | keymap rules read at runtime | `xkeyboard-config` | `xkb-data` | `xkeyboard-config` |
 | X core fonts | *recommend only* — falls back to built-ins | `xorg-x11-fonts-*` | `xfonts-base` | `font-misc-misc` |
 

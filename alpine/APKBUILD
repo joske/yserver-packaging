@@ -11,12 +11,14 @@ arch="x86_64 aarch64"
 license="MIT"
 # Runtime dependencies that nothing can infer from the ELF headers:
 #   vulkan-loader     — ash dlopen()s libvulkan.so.1
-#   xauth, util-linux — starty(1) execs xauth and mcookie, and refuses to
-#                       start without either
+#   xauth, mcookie    — starty(1) execs both and refuses to start without
+#                       either. NOT util-linux: Alpine splits it, and the
+#                       package that actually provides cmd:mcookie is the
+#                       standalone `mcookie` (main).
 #   xkeyboard-config  — xkbcommon reads the rules/keymaps at runtime
 # A Vulkan ICD (mesa-vulkan-ati, mesa-vulkan-intel, …) is also required for
 # rendering, but which one is hardware-dependent, so it is not pinned here.
-depends="vulkan-loader xauth util-linux xkeyboard-config"
+depends="vulkan-loader xauth mcookie xkeyboard-config"
 makedepends="
 	cargo
 	just
