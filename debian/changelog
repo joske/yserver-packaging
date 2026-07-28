@@ -1,0 +1,5 @@
+yserver (1.4.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging, built on the upstream `just install` contract.
+
+ -- Jos Dehaes <jos.dehaes@gmail.com>  Tue, 28 Jul 2026 20:00:00 +0200

@@ -1,0 +1,48 @@
+#!/usr/bin/make -f
+#
+# yserver consumes the upstream `just install` contract, so dh's auto-detected
+# buildsystem (which would guess cargo, or nothing) is bypassed for the build
+# and install steps. See the "Packaging" section of the shipped docs/setup.md.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# Defines DEB_VERSION_UPSTREAM, used to stamp the version below.
+include /usr/share/dpkg/pkg-info.mk
+
+# Keep cargo's output inside the build tree and out of $HOME, which is not
+# writable under some buildd configurations.
+export CARGO_HOME = $(CURDIR)/debian/cargo
+export CARGO_TARGET_DIR = $(CURDIR)/target
+
+# `just install` reads these. TARGETDIR defaults to
+# $${CARGO_TARGET_DIR:-target}/release, which is already correct here, but it
+# is stated explicitly so a change to CARGO_TARGET_DIR cannot silently
+# desynchronise the two.
+PREFIX = /usr
+TARGETDIR = $(CARGO_TARGET_DIR)/release
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# A release tarball has no .git, so stamp provenance explicitly or
+	# `yserver --version` reports the literal string "unknown".
+	YSERVER_GIT_COMMIT=v$(DEB_VERSION_UPSTREAM) \
+		cargo build --locked --release --bin yserver
+	PREFIX=$(PREFIX) just man
+
+override_dh_auto_install:
+	DESTDIR=$(CURDIR)/debian/yserver PREFIX=$(PREFIX) \
+		TARGETDIR=$(TARGETDIR) just install
+	# Debian ships the licence as debian/copyright, and dh_installdocs owns
+	# /usr/share/doc/yserver. Drop the generic upstream copy that
+	# `just install` stages there.
+	rm -f $(CURDIR)/debian/yserver/usr/share/doc/yserver/LICENSE
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/target $(CURDIR)/debian/cargo
+
+# There is no test suite that can run in a buildd chroot: the unit tests need
+# neither a GPU nor a seat, but the interesting coverage (rendercheck, xts)
+# needs both. Skip rather than pretend.
+override_dh_auto_test:

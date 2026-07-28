@@ -1,0 +1,72 @@
+# Contributor: Jos Dehaes <jos.dehaes@gmail.com>
+# Maintainer: Jos Dehaes <jos.dehaes@gmail.com>
+pkgname=yserver
+pkgver=1.4.0
+pkgrel=0
+pkgdesc="A modern X11 server written from scratch in Rust (DRM/KMS + Vulkan)"
+url="https://github.com/joske/yserver"
+# Needs atomic KMS/DRM and a Vulkan driver. Only these two are tested
+# upstream, so the arch list stays narrow rather than optimistic.
+arch="x86_64 aarch64"
+license="MIT"
+# Runtime dependencies that nothing can infer from the ELF headers:
+#   vulkan-loader     — ash dlopen()s libvulkan.so.1
+#   xauth, util-linux — starty(1) execs xauth and mcookie, and refuses to
+#                       start without either
+#   xkeyboard-config  — xkbcommon reads the rules/keymaps at runtime
+# A Vulkan ICD (mesa-vulkan-ati, mesa-vulkan-intel, …) is also required for
+# rendering, but which one is hardware-dependent, so it is not pinned here.
+depends="vulkan-loader xauth util-linux xkeyboard-config"
+makedepends="
+	cargo
+	just
+	scdoc
+	shaderc
+	gcc
+	musl-dev
+	pkgconf
+	libxshmfence-dev
+	libxkbcommon-dev
+	libinput-dev
+	fontconfig-dev
+	freetype-dev
+	mesa-dev
+	eudev-dev
+	"
+# Alpine policy splits documentation and man pages out of the main package;
+# default_doc picks up /usr/share/doc and /usr/share/man.
+subpackages="$pkgname-doc"
+source="$pkgname-$pkgver.tar.gz::https://github.com/joske/yserver/archive/v$pkgver.tar.gz"
+
+# The test suite has not been validated in a hardware-less builder, so it is
+# not run here rather than being wired up on the assumption that it passes.
+options="!check"
+
+# yserver links several C libraries, so a fully static binary is not viable.
+export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=-crt-static"
+
+build() {
+	# A release tarball has no .git; without this the build script stamps
+	# the literal string "unknown" into `yserver --version`.
+	export YSERVER_GIT_COMMIT="v$pkgver"
+	cargo build --locked --release --bin yserver
+	PREFIX=/usr just man
+}
+
+package() {
+	# TMPFILESDIR is deliberately empty: Alpine is not a systemd system, so
+	# a tmpfiles.d snippet would never be read. That leaves /tmp/.X11-unix
+	# to be created by whatever starts X — yserver creates it if missing,
+	# but under the calling user's umask, so a shared multi-user machine
+	# should create it root-owned and sticky (mode 1777) at boot instead.
+	DESTDIR="$pkgdir" PREFIX=/usr TMPFILESDIR= just install
+
+	# Alpine keeps licences under /usr/share/licenses/<pkg>; relocate the
+	# generic copy that `just install` stages into /usr/share/doc/yserver.
+	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+	rm -f "$pkgdir/usr/share/doc/$pkgname/LICENSE"
+}
+
+# Fill with `abuild checksum` once the v1.4.0 tarball is published; it cannot
+# be computed before the tag exists.
+sha512sums=""

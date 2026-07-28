@@ -1,0 +1,54 @@
+Source: yserver
+Section: x11
+Priority: optional
+Maintainer: Jos Dehaes <jos.dehaes@gmail.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ cargo (>= 1.85),
+ rustc (>= 1.85),
+ just,
+ scdoc,
+ glslc,
+ pkgconf,
+ libxshmfence-dev,
+ libxkbcommon-dev,
+ libinput-dev,
+ libfontconfig-dev,
+ libfreetype-dev,
+ libgbm-dev,
+ libudev-dev,
+Standards-Version: 4.7.0
+Homepage: https://github.com/joske/yserver
+Rules-Requires-Root: no
+
+Package: yserver
+Architecture: linux-any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ libvulkan1,
+ xauth,
+ util-linux,
+ xkb-data,
+Recommends:
+ mesa-vulkan-drivers,
+ xfonts-base,
+Suggests:
+ lightdm,
+Description: modern X11 server written from scratch in Rust (DRM/KMS + Vulkan)
+ yserver is a modern X11 server written from scratch in Rust. The goal is not
+ to clone Xorg but to provide a practical X11 server that runs real desktop
+ environments, window managers and applications on modern Linux while dropping
+ legacy baggage (multiple screens, non-TrueColor visuals, indirect GLX, the
+ DDX driver ABI, endian-swapped clients, and so on).
+ .
+ It drives the GPU directly through atomic DRM/KMS and composites with Vulkan.
+ There is no seat manager: it opens /dev/dri and /dev/input directly, so the
+ user running it needs access to both (see /usr/share/doc/yserver/setup.md).
+ It runs full MATE/XFCE/Cinnamon/Plasma desktops and window managers such as
+ FVWM3, e16 and wmaker, and implements a broad set of extensions (Composite,
+ DAMAGE, DRI3, GLX, Present, RANDR, RENDER, SHAPE, SYNC, XFIXES, XInput, and
+ more).
+ .
+ This package provides the standalone DRM/KMS server (yserver) and starty(1),
+ a startx-style launcher for running it from a console.
