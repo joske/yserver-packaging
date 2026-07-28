@@ -373,7 +373,12 @@ jobs:
           export SRCDEST="$PWD"
           # The committed sha512sums are empty until a release tarball is
           # published; recompute for whatever ref this run built.
-          abuild checksum
+          #
+          # -F ("force run as root") is required on EVERY abuild invocation,
+          # including checksum — each one re-runs the root check independently,
+          # so `abuild checksum` without it dies with "Do not run abuild as
+          # root" before the build is even reached.
+          abuild -F checksum
           abuild -F -r
 
       - name: Show package contents
