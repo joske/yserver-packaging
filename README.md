@@ -38,11 +38,9 @@ sudo dnf install ./yserver-*.rpm   # rpm -Uvh only CHECKS deps, it never fetches
 sudo apk add --allow-untrusted ./yserver-*.apk
 ```
 
-`--allow-untrusted` is required and expected. `abuild` cannot build without a
+For alpine, `--allow-untrusted` is required and expected. `abuild` cannot build without a
 signing key, so CI generates a throwaway one per run and discards the private
-half; the signature is a build artifact, not a trust anchor, and there is no
-stable public key to install into `/etc/apk/keys`. If distro maintainers ever
-package yserver themselves, their own signing keys make the question moot.
+half.
 
 ## The install contract
 
