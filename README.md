@@ -151,11 +151,31 @@ neither `rpmlint` nor `lintian` models `dlopen`. A missing Vulkan loader or a
 stale `seatd` dependency passes CI and fails on a user's machine. Runtime
 dependency correctness needs a real install on real hardware.
 
-Checksummed recipes point at the **release asset**, not
-`github.com/.../archive/v$ver.tar.gz`. GitHub generates archive tarballs on
-demand and has changed their compression before, which silently invalidates
-pinned hashes downstream. Fedora still uses the auto-generated archive, since
-RPM does not verify source checksums and it is the idiomatic COPR form.
+## Source archives and checksums
+
+All recipes take their source from GitHub's auto-generated tag archive,
+`github.com/.../archive/refs/tags/v$ver.tar.gz`.
+
+Up to v1.4.0 the release also uploaded its own `git archive` tarball plus
+`SHA256SUMS`/`SHA512SUMS`, so that checksummed recipes could pin bytes GitHub
+would never regenerate — it changed archive compression once in 2023 and broke
+pinned hashes across the AUR. That was dropped afterwards: GitHub already
+publishes "Source code (tar.gz)" for every release, so the release page carried
+two source downloads of the same tree with different bytes, and only one
+matched the published checksums. The duplication caused more confusion than the
+stability bought.
+
+The trade-off is accepted knowingly: if GitHub ever changes archive generation
+again, bump `pkgrel` and re-run `abuild checksum` / `updpkgsums`.
+
+After each release the Release workflow prints the archive's sha256 and sha512
+in its job summary, ready to paste into `alpine/APKBUILD` and the AUR PKGBUILD.
+Fedora needs no checksum — RPM does not verify source hashes.
+
+**The committed sha512 is for users, not CI.** The Alpine job runs
+`abuild -F checksum`, regenerating it at build time, so CI passes regardless of
+what is committed. A stale committed hash only breaks someone building from
+this repo with `abuild`.
 
 ## Status
 

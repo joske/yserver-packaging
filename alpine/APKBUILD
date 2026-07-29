@@ -38,11 +38,17 @@ makedepends="
 # Alpine policy splits documentation and man pages out of the main package;
 # default_doc picks up /usr/share/doc and /usr/share/man.
 subpackages="$pkgname-doc"
-# The release asset, NOT github.com/.../archive/v$pkgver.tar.gz. GitHub
-# generates archive tarballs on demand and has changed their compression
-# before, which invalidates a pinned checksum; an uploaded release asset is
-# immutable, so sha512sums stays correct.
-source="https://github.com/joske/yserver/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz"
+# GitHub's auto-generated tag archive. The release no longer ships a separate
+# source tarball: it duplicated this one (same tree, different bytes) and left
+# two source downloads on the release page, one of which did not match the
+# published checksums.
+#
+# Caveat accepted knowingly: these archives are generated on demand, and
+# GitHub changed their compression once in 2023, which invalidated pinned
+# checksums across the AUR and elsewhere. They reverted and now treat it as
+# breaking, but there is no formal guarantee. If it ever happens again, bump
+# pkgrel and re-run `abuild checksum`.
+source="$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
 
 # The test suite has not been validated in a hardware-less builder, so it is
 # not run here rather than being wired up on the assumption that it passes.
@@ -73,6 +79,19 @@ package() {
 	rm -f "$pkgdir/usr/share/doc/$pkgname/LICENSE"
 }
 
-# Fill with `abuild checksum` once the v1.4.0 tarball is published; it cannot
-# be computed before the tag exists.
-sha512sums=""
+doc() {
+	default_doc
+	# abuild's default_doc sweeps /usr/share/licenses into -doc as well, which
+	# left the main package with no licence file at all (observed in the 1.4.0
+	# apk). Move it back: installing yserver without yserver-doc should still
+	# carry its licence.
+	if [ -d "$subpkgdir/usr/share/licenses" ]; then
+		mkdir -p "$pkgdir/usr/share"
+		mv "$subpkgdir/usr/share/licenses" "$pkgdir/usr/share/"
+	fi
+}
+
+# Regenerate with `abuild checksum` on every pkgver bump.
+sha512sums="
+e419f320d37934dbbb8a71585f3d3840566beac7d145059097c18f68cd633eeabc487e0ab5a1e480ba1423b23e0f386733130352fc3213fe670bda58276372f2  yserver-1.4.0.tar.gz
+"
