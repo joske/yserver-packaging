@@ -26,6 +26,24 @@ than absent. FreeBSD is handled through the ports tree directly. The install
 contract itself stays FreeBSD-clean (portable `install -d`/`install -m`, a
 `ttyv*` guard in `starty`) so a ports maintainer can consume it unmodified.
 
+## Installing a built package
+
+Release artifacts are loose package files, not repositories, so each format
+needs its local-file form. The wrong invocation looks like a broken package
+rather than a usage error:
+
+```sh
+sudo apt install ./yserver_*.deb   # a bare filename is parsed as a package NAME
+sudo dnf install ./yserver-*.rpm   # rpm -Uvh only CHECKS deps, it never fetches them
+sudo apk add --allow-untrusted ./yserver-*.apk
+```
+
+`--allow-untrusted` is required and expected. `abuild` cannot build without a
+signing key, so CI generates a throwaway one per run and discards the private
+half; the signature is a build artifact, not a trust anchor, and there is no
+stable public key to install into `/etc/apk/keys`. If distro maintainers ever
+package yserver themselves, their own signing keys make the question moot.
+
 ## The install contract
 
 Every recipe here does the same three things. Full reference: the "Packaging"
@@ -102,7 +120,7 @@ runtime.
 | `xauth` | `starty` execs it, and refuses to start without | `xorg-x11-xauth` | `xauth` | `xauth` |
 | `mcookie` | `starty` execs it, same check | `util-linux` | *none — Essential* | `mcookie` |
 | XKB data | keymap rules read at runtime | `xkeyboard-config` | `xkb-data` | `xkeyboard-config` |
-| X core fonts | *recommend only* — falls back to built-ins | `xorg-x11-fonts-*` | `xfonts-base` | `font-misc-misc` |
+| X core fonts | not linked; xterm's default `fixed` lives here | `xorg-x11-fonts-*` (weak) | `xfonts-base` (weak) | `font-misc-misc`, `font-cursor-misc` (hard — apk has no weak deps) |
 
 The ICD is a *recommend*, not a dependency: a proprietary NVIDIA driver
 satisfies it just as well as Mesa.
