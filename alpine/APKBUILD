@@ -82,10 +82,12 @@ package() {
 doc() {
 	default_doc
 	# abuild's default_doc sweeps /usr/share/licenses into -doc along with the
-	# docs, which left 1.4.0's main apk with no licence file at all. COPY it
-	# back rather than moving it: Alpine convention puts licences in -doc, and
-	# installing yserver without yserver-doc should still carry one, so both
-	# packages get it.
+	# docs, which left 1.4.0's main apk with no licence file at all. MOVE it
+	# back, do not copy: copying makes both packages own
+	# /usr/share/licenses/yserver/LICENSE, and file overlap between packages
+	# normally needs explicit `replaces` semantics. Whether apk tolerates
+	# same-origin overlap depends on version and transaction order, which is not
+	# something to rely on for a licence file.
 	#
 	# This relies on abuild packaging the main apk after the subpackage split
 	# functions run (package -> prepare_subpackages -> prepare_package ->
@@ -93,7 +95,7 @@ doc() {
 	# that ordering.
 	if [ -d "$subpkgdir/usr/share/licenses" ]; then
 		mkdir -p "$pkgdir/usr/share"
-		cp -a "$subpkgdir/usr/share/licenses" "$pkgdir/usr/share/"
+		mv "$subpkgdir/usr/share/licenses" "$pkgdir/usr/share/"
 	fi
 }
 

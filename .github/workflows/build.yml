@@ -515,7 +515,30 @@ jobs:
           # subpackage splits.
           printf '%s\n' "$main" | grep -qE "usr/share/licenses/yserver/LICENSE\$" \
             || { echo "::error::LICENSE missing from the main yserver apk"; exit 1; }
+          # ...and NOT in -doc: doc() moves it, so both owning the path would be
+          # a file conflict between packages.
+          printf '%s\n' "$doc" | grep -qE "usr/share/licenses/" \
+            && { echo "::error::LICENSE is in BOTH apks — file overlap"; exit 1; }
           echo "package contents verified"
+
+      - name: Install the packages
+        # The one test that actually exercises apk rather than tar: resolve the
+        # dependencies, install both packages together, and confirm the binaries
+        # and man pages land. --allow-untrusted because these are signed with a
+        # per-run key by design.
+        run: |
+          set -eu
+          apk add --allow-untrusted apks/yserver-"$V"-r0.apk apks/yserver-doc-"$V"-r0.apk
+          command -v yserver >/dev/null || { echo "::error::yserver not on PATH after install"; exit 1; }
+          command -v starty  >/dev/null || { echo "::error::starty not on PATH after install"; exit 1; }
+          [ -f /usr/share/man/man1/yserver.1.gz ] || [ -f /usr/share/man/man1/yserver.1 ] \
+            || { echo "::error::yserver.1 missing after install"; exit 1; }
+          [ -f /usr/share/licenses/yserver/LICENSE ] \
+            || { echo "::error::licence missing after install"; exit 1; }
+          # yserver cannot start here (no GPU, no KMS, no input devices), but it
+          # must at least be a working binary with its shared libraries resolved.
+          yserver --version
+          apk info -L yserver | head -20
 
       - uses: actions/upload-artifact@v7
         with:
