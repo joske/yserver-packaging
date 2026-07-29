@@ -33,13 +33,20 @@ on:
         description: yserver git ref to build (tag, branch or commit)
         default: master
         required: false
+      sha:
+        description: >-
+          Optional commit SHA the ref must resolve to. The release workflow
+          passes the commit it bound, so a tag moved mid-run cannot silently
+          produce packages from different content.
+        required: false
 
 # Puts the built ref in the run's title, so yserver's release workflow can
 # correlate the run it dispatched instead of assuming "newest run wins".
 run-name: packages for ${{ inputs.ref }}
 
-# One build per ref at a time; a second dispatch for the same ref queues rather
-# than racing, which also keeps the correlation above unambiguous.
+# One build per ref at a time. Note this is NOT a FIFO queue: GitHub keeps a
+# single pending run per group, so a newer pending dispatch replaces the
+# previous pending one rather than lining up behind it.
 concurrency:
   group: build-${{ inputs.ref }}
   cancel-in-progress: false
@@ -89,6 +96,22 @@ jobs:
           ref: ${{ steps.resolve.outputs.ref }}
           path: yserver
           fetch-depth: 0
+
+      - name: Verify the checkout is the expected commit
+        env:
+          EXPECTED_SHA: ${{ inputs.sha }}
+        run: |
+          set -eu
+          if [ -z "${EXPECTED_SHA:-}" ]; then
+            echo "::notice::no expected SHA supplied — building whatever the ref resolves to"
+            exit 0
+          fi
+          got=$(git -C yserver rev-parse HEAD)
+          if [ "$got" != "$EXPECTED_SHA" ]; then
+            echo "::error::ref resolved to $got but $EXPECTED_SHA was expected"
+            exit 1
+          fi
+          echo "checkout is $got, as expected."
 
       - name: Sanity-check the recipes before building anything
         # Every one of these is cheap and every one of them otherwise surfaces
@@ -205,7 +228,7 @@ jobs:
   fedora:
     needs: source
     runs-on: ubuntu-latest
-    container: fedora:42
+    container: fedora:43
     env:
       V: ${{ needs.source.outputs.version }}
     steps:
@@ -586,7 +609,10 @@ jobs:
             || { echo "::error::rewritten APKBUILD is not valid shell"; exit 1; }
           # `sh -n` passing proves nothing about content: a truncated APKBUILD
           # is still valid shell. Assert the recipe itself is intact.
-          for marker in "^pkgname=yserver" "^pkgver=" "^package()" "^build()"; do
+          # Only things every APKBUILD must have. NOT build(): abuild treats it
+          # as optional, so requiring it would be a spurious failure the day a
+          # recipe legitimately drops it.
+          for marker in "^pkgname=" "^pkgver=" "^package\(\)"; do
             grep -qE "$marker" alpine/APKBUILD \
               || { echo "::error::rewrite destroyed the recipe: $marker is gone"; exit 1; }
           done

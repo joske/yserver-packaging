@@ -70,7 +70,7 @@ this only shows up when packaging.
 
 Consequences per distro:
 
-- **Fedora 42** — distro `rust`/`cargo` are new enough. Nothing special.
+- **Fedora 43** — distro `rust`/`cargo` are new enough. Nothing special.
 - **Debian trixie** — ships 1.85, so the build uses a rustup-supplied
   toolchain and `debian/control` does *not* Build-Depend on `cargo`/`rustc`
   (`rustc (>= 1.87)` would be unsatisfiable there and `dpkg-buildpackage`
@@ -121,7 +121,7 @@ commit if you have it; the tag is the next-best truthful answer.
 ## CI
 
 `.github/workflows/build.yml` builds all three packages, each inside its own
-distro container (`fedora:42`, `debian:trixie`, `alpine:3.24`), so each uses
+distro container (`fedora:43`, `debian:trixie`, `alpine:3.24`), so each uses
 that distro's real toolchain and policy checker.
 
 It runs **on demand or on release only**, through a single `workflow_dispatch`
