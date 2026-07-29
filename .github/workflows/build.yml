@@ -194,8 +194,8 @@ jobs:
             *) echo "::notice::ref $REF is not a release tag — skipping"; exit 0 ;;
           esac
           url="https://github.com/joske/yserver/archive/refs/tags/$REF.tar.gz"
-          if ! curl -sSLf -o src.tar.gz "$url"; then
-            echo "::warning::could not fetch $url"
+          if ! curl -sSLf -o src.tar.gz "$url" || [ ! -s src.tar.gz ]; then
+            echo "::warning::could not fetch $url (or it was empty)"
             exit 0
           fi
           actual=$(sha512sum src.tar.gz | cut -d' ' -f1)
@@ -545,8 +545,23 @@ jobs:
         env:
           REF: ${{ needs.source.outputs.ref }}
           V: ${{ needs.source.outputs.version }}
+          EXPECTED_SHA: ${{ inputs.sha }}
         run: |
           set -eu
+          # This job runs AFTER the builds and downloads whatever $REF points at
+          # NOW. If the tag moved in between, it would commit the moved tag's
+          # checksum to master — the release would later reject the moved tag,
+          # but packaging would already be wrong. So pin to the same commit the
+          # source job verified, and re-check after downloading too.
+          tag_sha() {
+            git ls-remote "https://github.com/joske/yserver" "refs/tags/$REF^{}" \
+              | cut -f1
+          }
+          if [ -n "${EXPECTED_SHA:-}" ]; then
+            got=$(tag_sha)
+            [ "$got" = "$EXPECTED_SHA" ] \
+              || { echo "::error::$REF resolves to ${got:-nothing} but $EXPECTED_SHA was expected"; exit 1; }
+          fi
           # Work from CURRENT master, not the checkout this run started with.
           # Otherwise: master gets bumped to 1.4.2 while the containers build,
           # this commits 1.4.1's hash, and the rebase succeeds cleanly because
@@ -563,10 +578,24 @@ jobs:
           fi
 
           url="https://github.com/joske/yserver/archive/refs/tags/$REF.tar.gz"
-          curl -sSLf -o src.tar.gz "$url"
+          curl -sSLf -o src.tar.gz "$url" \
+            || { echo "::error::could not download $url"; exit 1; }
+          # A successful but empty response hashes to the empty-file digest,
+          # which is 128 valid hex characters and would pass a length check.
+          [ -s src.tar.gz ] || { echo "::error::downloaded archive is empty"; exit 1; }
+          tar tzf src.tar.gz >/dev/null \
+            || { echo "::error::downloaded archive is not a valid tarball"; exit 1; }
           sha=$(sha512sum src.tar.gz | cut -d' ' -f1)
           rm -f src.tar.gz
-          [ ${#sha} -eq 128 ] || { echo "::error::bad sha512: $sha"; exit 1; }
+          printf '%s' "$sha" | grep -Eq '^[0-9a-f]{128}$' \
+            || { echo "::error::implausible sha512: $sha"; exit 1; }
+
+          # The tag must not have moved while the archive was downloading.
+          if [ -n "${EXPECTED_SHA:-}" ]; then
+            got=$(tag_sha)
+            [ "$got" = "$EXPECTED_SHA" ] \
+              || { echo "::error::$REF moved to ${got:-nothing} during download"; exit 1; }
+          fi
 
           # Rewrite the block with awk: no nested quoting to get wrong, and
           # anchored at ^ so a commented example cannot be hit. Single- vs
