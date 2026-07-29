@@ -483,15 +483,15 @@ jobs:
               || { echo "::error::man1/$want.1 missing from the yserver-doc apk"; exit 1; }
           done
 
-          # The licence belongs in the MAIN package: abuild's default_doc sweeps
+          # The licence must be in the MAIN package: abuild's default_doc sweeps
           # /usr/share/licenses into -doc, which left 1.4.0's main apk with no
-          # licence at all. The doc() override moves it back, and this asserts
-          # the override actually worked rather than assuming abuild packages
-          # the main apk after the subpackage splits.
+          # licence at all. The doc() override copies it back, so it is expected
+          # in BOTH packages — Alpine convention keeps it in -doc, and a
+          # main-only install should still carry one. This asserts the override
+          # worked rather than assuming abuild packages the main apk after the
+          # subpackage splits.
           printf '%s\n' "$main" | grep -qE "usr/share/licenses/yserver/LICENSE\$" \
             || { echo "::error::LICENSE missing from the main yserver apk"; exit 1; }
-          printf '%s\n' "$doc" | grep -qE "usr/share/licenses/" \
-            && { echo "::error::LICENSE is still in the yserver-doc apk"; exit 1; }
           echo "package contents verified"
 
       - uses: actions/upload-artifact@v7
@@ -524,14 +524,50 @@ jobs:
           V: ${{ needs.source.outputs.version }}
         run: |
           set -eu
+          # Work from CURRENT master, not the checkout this run started with.
+          # Otherwise: master gets bumped to 1.4.2 while the containers build,
+          # this commits 1.4.1's hash, and the rebase succeeds cleanly because
+          # pkgver and sha512sums are different lines — leaving pkgver=1.4.2
+          # paired with 1.4.1's archive name and hash.
+          git fetch origin master
+          git reset --hard origin/master
+
+          # If master has moved on to another version, this run's hash is stale
+          # by definition and someone else's build will fill in the right one.
+          if ! grep -qxF "pkgver=$V" alpine/APKBUILD; then
+            echo "::notice::master is no longer at pkgver=$V — leaving the checksum alone"
+            exit 0
+          fi
+
           url="https://github.com/joske/yserver/archive/refs/tags/$REF.tar.gz"
           curl -sSLf -o src.tar.gz "$url"
           sha=$(sha512sum src.tar.gz | cut -d' ' -f1)
           rm -f src.tar.gz
+          [ ${#sha} -eq 128 ] || { echo "::error::bad sha512: $sha"; exit 1; }
 
-          # Not a heredoc: a heredoc terminator cannot be indented, and every
-          # line inside a YAML block scalar is.
-          python3 -c 'import re,sys; p="alpine/APKBUILD"; s=open(p).read(); b="sha512sums=\"\n%s  yserver-%s.tar.gz\n\"" % (sys.argv[1], sys.argv[2]); n,c = re.subn(r"sha512sums=\"[^\"]*\"", b, s, count=1); sys.exit("no sha512sums block in "+p) if c != 1 else open(p,"w").write(n)' "$sha" "$V"
+          # Rewrite the block with awk: no nested quoting to get wrong, and
+          # anchored at ^ so a commented example elsewhere cannot be hit.
+          # Handles both the multi-line block and a single-line sha512sums="".
+          awk -v sha="$sha" -v ver="$V" '
+            /^sha512sums="/ {
+              print "sha512sums=\""
+              print sha "  yserver-" ver ".tar.gz"
+              print "\""
+              if ($0 !~ /^sha512sums="[^"]*"[ \t]*$/) skip = 1
+              seen++
+              next
+            }
+            skip && /^"/ { skip = 0; next }
+            skip { next }
+            { print }
+            END { if (seen != 1) { print "expected exactly 1 sha512sums block, found " seen > "/dev/stderr"; exit 1 } }
+          ' alpine/APKBUILD > APKBUILD.new && mv APKBUILD.new alpine/APKBUILD
+
+          # Assert the end state rather than trusting the rewrite.
+          grep -qxF "$sha  yserver-$V.tar.gz" alpine/APKBUILD \
+            || { echo "::error::sha512sums block was not written as expected"; exit 1; }
+          sh -n alpine/APKBUILD \
+            || { echo "::error::rewritten APKBUILD is not valid shell"; exit 1; }
 
           if git diff --quiet alpine/APKBUILD; then
             echo "sha512sums already correct for $REF — nothing to commit."
@@ -545,7 +581,8 @@ jobs:
           git add alpine/APKBUILD
           git commit -m "alpine: sha512sums for $REF" \
                      -m "Refreshed automatically after a successful $REF package build."
-          # Someone may have pushed while the containers were building.
-          git pull --rebase --autostash origin master
+          # No rebase: we are already on top of current master. If someone
+          # pushed in the last few seconds, a non-fast-forward failure is the
+          # right outcome — re-run rather than graft.
           git push origin HEAD:master
           echo "committed sha512sums for $REF"

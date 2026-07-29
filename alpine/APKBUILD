@@ -81,13 +81,19 @@ package() {
 
 doc() {
 	default_doc
-	# abuild's default_doc sweeps /usr/share/licenses into -doc as well, which
-	# left the main package with no licence file at all (observed in the 1.4.0
-	# apk). Move it back: installing yserver without yserver-doc should still
-	# carry its licence.
+	# abuild's default_doc sweeps /usr/share/licenses into -doc along with the
+	# docs, which left 1.4.0's main apk with no licence file at all. COPY it
+	# back rather than moving it: Alpine convention puts licences in -doc, and
+	# installing yserver without yserver-doc should still carry one, so both
+	# packages get it.
+	#
+	# This relies on abuild packaging the main apk after the subpackage split
+	# functions run (package -> prepare_subpackages -> prepare_package ->
+	# create_apks). The build workflow asserts the result rather than trusting
+	# that ordering.
 	if [ -d "$subpkgdir/usr/share/licenses" ]; then
 		mkdir -p "$pkgdir/usr/share"
-		mv "$subpkgdir/usr/share/licenses" "$pkgdir/usr/share/"
+		cp -a "$subpkgdir/usr/share/licenses" "$pkgdir/usr/share/"
 	fi
 }
 
