@@ -546,21 +546,37 @@ jobs:
           [ ${#sha} -eq 128 ] || { echo "::error::bad sha512: $sha"; exit 1; }
 
           # Rewrite the block with awk: no nested quoting to get wrong, and
-          # anchored at ^ so a commented example elsewhere cannot be hit.
-          # Handles both the multi-line block and a single-line sha512sums="".
+          # anchored at ^ so a commented example cannot be hit. Single- vs
+          # multi-line is decided by COUNTING quotes on the opener, so a
+          # trailing comment does not fool it, and a closing quote may be
+          # indented. An unterminated block is a hard error — an earlier version
+          # silently discarded everything after the block and still passed both
+          # `sh -n` and the checksum grep, because the truncated file was valid
+          # shell.
           awk -v sha="$sha" -v ver="$V" '
             /^sha512sums="/ {
+              line = $0
+              q = gsub(/"/, "", line)
               print "sha512sums=\""
               print sha "  yserver-" ver ".tar.gz"
               print "\""
-              if ($0 !~ /^sha512sums="[^"]*"[ \t]*$/) skip = 1
+              if (q < 2) skip = 1
               seen++
               next
             }
-            skip && /^"/ { skip = 0; next }
+            skip && /^[ \t]*"/ { skip = 0; next }
             skip { next }
             { print }
-            END { if (seen != 1) { print "expected exactly 1 sha512sums block, found " seen > "/dev/stderr"; exit 1 } }
+            END {
+              if (seen != 1) {
+                print "expected exactly 1 sha512sums block, found " seen+0 > "/dev/stderr"
+                exit 1
+              }
+              if (skip) {
+                print "unterminated sha512sums block" > "/dev/stderr"
+                exit 1
+              }
+            }
           ' alpine/APKBUILD > APKBUILD.new && mv APKBUILD.new alpine/APKBUILD
 
           # Assert the end state rather than trusting the rewrite.
@@ -568,6 +584,12 @@ jobs:
             || { echo "::error::sha512sums block was not written as expected"; exit 1; }
           sh -n alpine/APKBUILD \
             || { echo "::error::rewritten APKBUILD is not valid shell"; exit 1; }
+          # `sh -n` passing proves nothing about content: a truncated APKBUILD
+          # is still valid shell. Assert the recipe itself is intact.
+          for marker in "^pkgname=yserver" "^pkgver=" "^package()" "^build()"; do
+            grep -qE "$marker" alpine/APKBUILD \
+              || { echo "::error::rewrite destroyed the recipe: $marker is gone"; exit 1; }
+          done
 
           if git diff --quiet alpine/APKBUILD; then
             echo "sha512sums already correct for $REF — nothing to commit."
