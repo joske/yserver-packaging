@@ -16,9 +16,21 @@ license="MIT"
 #                       package that actually provides cmd:mcookie is the
 #                       standalone `mcookie` (main).
 #   xkeyboard-config  — xkbcommon reads the rules/keymaps at runtime
+#   font-cursor-misc, — core X11 fonts: the cursor font and "fixed", which is
+#   font-misc-misc      xterm's default — without it xterm will not start.
+#                       Debian and Fedora pull the equivalents through weak
+#                       dependencies, which apk cannot express, so they are
+#                       hard deps here. Alpine's own xorg-server does the same.
 # A Vulkan ICD (mesa-vulkan-ati, mesa-vulkan-intel, …) is also required for
 # rendering, but which one is hardware-dependent, so it is not pinned here.
-depends="vulkan-loader xauth mcookie xkeyboard-config"
+depends="
+	vulkan-loader
+	xauth
+	mcookie
+	xkeyboard-config
+	font-cursor-misc
+	font-misc-misc
+	"
 makedepends="
 	cargo
 	just
