@@ -435,29 +435,50 @@ jobs:
   alpine:
     needs: source
     strategy:
-      # Not fail-fast: a broken architecture should report itself rather than
-      # cancelling the other one mid-build. The run still fails, and
-      # release.yml requires the whole run to succeed.
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
             runner: ubuntu-latest
           - arch: aarch64
-            # GitHub's free arm64 runners for public repositories. Native, not
-            # emulated: a qemu-user build of this workspace would take hours.
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    container: alpine:3.24
+    # Deliberately NOT `container: alpine:3.24`, unlike the fedora and debian
+    # jobs. The runner executes JavaScript actions (checkout, download-artifact,
+    # upload-artifact) with a Node binary it mounts into the job container, and
+    # the musl build of that binary is shipped for x64 ONLY:
+    #
+    #   JavaScript Actions in Alpine containers are only supported on x64 Linux
+    #   runners. Detected Linux Arm64
+    #
+    # So on arm64 every `uses:` step fails before anything is built. Running the
+    # actions on the Ubuntu host and the BUILD in `docker run` keeps one code
+    # path for both architectures instead of special-casing aarch64.
     env:
       V: ${{ needs.source.outputs.version }}
     steps:
-      - name: Install build tooling
-        # `apk update` first, and deliberately NOT `--no-cache`: that flag
-        # fetches the package index transiently and discards it, so when
-        # `abuild -r` later installs depends+makedepends as a virtual package,
-        # apk has no index and reports every dependency as "no such package".
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: source-tarball
+
+      - name: Build, verify and install-test the .apk inside Alpine
+        # One `docker run` for the whole thing: each invocation is a fresh
+        # container, so splitting this into a step per phase would discard the
+        # installed toolchain between them.
         run: |
+          set -eu
+          # Created on the HOST so it is owned by the runner user; root inside
+          # the container can write into it regardless.
+          mkdir -p apks
+          # -i is required: the script arrives on stdin, and without it the
+          # container gets /dev/null, so `sh -s` reads EOF and builds nothing.
+          docker run --rm -i -e V="$V" -v "$PWD":/work -w /work alpine:3.24 \
+                     sh -eu -s <<'IN'
+          # `apk update` first, and deliberately NOT `--no-cache`: that flag
+          # fetches the package index transiently and discards it, so when
+          # `abuild -r` later installs depends+makedepends as a virtual package,
+          # apk has no index and reports every dependency as "no such package".
           apk update
           apk add git alpine-sdk \
               cargo just scdoc shaderc gcc musl-dev pkgconf \
@@ -465,14 +486,6 @@ jobs:
               fontconfig-dev freetype-dev mesa-dev eudev-dev
           rustc --version
 
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: source-tarball
-
-      - name: Build the .apk
-        run: |
-          set -eu
           # abuild refuses to run as root unless forced; -F is the documented
           # escape hatch and avoids creating a build user in a throwaway
           # container. It still needs a signing key.
@@ -509,19 +522,14 @@ jobs:
           abuild -F checksum
           abuild -F -r
 
-          # Collect the output into the workspace. REPODEST is
-          # $HOME/packages/<name-of-startdir's-parent>/$arch, and HOME here is
-          # /github/home rather than /root; upload-artifact does not expand
-          # shell variables or ~, so copy to a known path instead of guessing.
-          mkdir -p "$GITHUB_WORKSPACE/apks"
-          cp "$HOME"/packages/*/*/*.apk "$GITHUB_WORKSPACE/apks/"
-          ls -l "$GITHUB_WORKSPACE/apks/"
+          # Collect the output into the mounted workspace. REPODEST is
+          # $HOME/packages/<name-of-startdir's-parent>/$arch, so glob rather
+          # than hardcode the middle component.
+          cd /work
+          cp "$HOME"/packages/*/*/*.apk apks/
+          ls -l apks/
 
-      - name: Show package contents
-        # Same one-argument caution as the Debian job: tar takes a single -f,
-        # and the build produces yserver plus the yserver-doc subpackage.
-        run: |
-          set -eu
+          # ── verify the contents ──────────────────────────────────────────
           # No `tar ... | sort`: POSIX sh has no pipefail, so a pipeline's
           # status is the LAST command's and `sort` succeeding would mask tar
           # failing. That is exactly how a previous run reported success while
@@ -563,13 +571,11 @@ jobs:
             && { echo "::error::LICENSE is in BOTH apks — file overlap"; exit 1; }
           echo "package contents verified"
 
-      - name: Install the packages
-        # The one test that actually exercises apk rather than tar: resolve the
-        # dependencies, install both packages together, and confirm the binaries
-        # and man pages land. --allow-untrusted because these are signed with a
-        # per-run key by design.
-        run: |
-          set -eu
+          # ── install-test ─────────────────────────────────────────────────
+          # The one test that actually exercises apk rather than tar: resolve the
+          # dependencies, install both packages together, and confirm the binaries
+          # and man pages land. --allow-untrusted because these are signed with a
+          # per-run key by design.
           apk add --allow-untrusted apks/yserver-"$V"-r0.apk apks/yserver-doc-"$V"-r0.apk
           command -v yserver >/dev/null || { echo "::error::yserver not on PATH after install"; exit 1; }
           command -v starty  >/dev/null || { echo "::error::starty not on PATH after install"; exit 1; }
@@ -582,21 +588,21 @@ jobs:
           yserver --version
           apk info -L yserver | head -20
 
-      - name: Put the architecture in the apk filenames
-        # abuild's REPODEST puts the arch in the PATH ($HOME/packages/*/$arch/),
-        # not in the filename, so both architectures build an identically named
-        # yserver-$V-r0.apk. Release assets are a single flat namespace: without
-        # this the two would collide, and release.yml's duplicate-basename check
-        # would fail the release. Done after the verify and install steps above,
-        # which address the apks by their built names.
-        env:
-          A: ${{ matrix.arch }}
-        run: |
-          set -eu
-          for a in apks/*.apk; do
-            mv "$a" "${a%.apk}-$A.apk"
+          # ── name the apks by architecture ────────────────────────────────
+          # abuild's REPODEST puts the arch in the PATH, not in the filename, so
+          # both architectures build an identically named yserver-$V-r0.apk.
+          # Release assets are a single flat namespace: without this the two
+          # would collide, and release.yml's duplicate-basename check would fail
+          # the release. Uses apk's own idea of the arch, not the matrix leg's.
+          a=$(apk --print-arch)
+          for f in apks/*.apk; do
+            case "$f" in
+              *-"$a".apk) ;;
+              *) mv "$f" "${f%.apk}-$a.apk" ;;
+            esac
           done
           ls -l apks/
+          IN
 
       - uses: actions/upload-artifact@v7
         with:
