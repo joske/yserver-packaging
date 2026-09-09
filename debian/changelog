@@ -1,5 +1,10 @@
-yserver (1.4.0-1) unstable; urgency=medium
+yserver (1.5.0-1) unstable; urgency=medium
 
-  * Initial Debian packaging, built on the upstream `just install` contract.
+  * New upstream release 1.5.0.
+    - X11 server-side window borders.
+    - Damage-clipped repaint for non-composited desktops.
+    - Direct compositor scanout.
+    - DRI3 1.4 syncobjs served through DRM.
 
- -- Jos Dehaes <jos.dehaes@gmail.com>  Tue, 28 Jul 2026 20:00:00 +0200
+ -- Jos Dehaes <jos.dehaes@gmail.com>  Wed, 09 Sep 2026 12:00:00 +0200
+
