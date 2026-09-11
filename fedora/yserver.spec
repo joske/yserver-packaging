@@ -29,7 +29,7 @@
 %global crate_name yserver
 
 Name:           yserver
-Version:        1.5.0
+Version:        1.5.1
 Release:        1%{?dist}
 Summary:        A modern X11 server written from scratch in Rust (DRM/KMS + Vulkan)
 
@@ -188,6 +188,8 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 # so no package should claim ownership of it.
 
 %changelog
+* Fri Sep 11 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.5.1-1
+- New upstream release 1.5.1: bugfixes
 * Wed Sep 09 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.5.0-1
 - New upstream release 1.5.0: server-side window borders, damage-clipped
   repaint for non-composited desktops, direct compositor scanout, and DRI3 1.4
