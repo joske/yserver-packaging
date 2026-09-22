@@ -29,7 +29,7 @@
 %global crate_name yserver
 
 Name:           yserver
-Version:        1.5.1
+Version:        1.6.0
 Release:        1%{?dist}
 Summary:        A modern X11 server written from scratch in Rust (DRM/KMS + Vulkan)
 
@@ -188,6 +188,11 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 # so no package should claim ownership of it.
 
 %changelog
+* Tue Sep 22 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.6.0-1
+- New upstream release 1.6.0: XDMCP, TCP transport and server reset for shared
+  desktops (both off by default at build time); resize/damage, border and
+  Composite correctness fixes; GLX visual fixes for QtWebEngine and glmark2;
+  RANDR CRTC mode hotplug relight
 * Fri Sep 11 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.5.1-1
 - New upstream release 1.5.1: bugfixes
 * Wed Sep 09 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.5.0-1

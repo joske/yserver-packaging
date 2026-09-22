@@ -1,3 +1,14 @@
+yserver (1.6.0-1) unstable; urgency=medium
+
+  * New upstream release 1.6.0.
+    - XDMCP, TCP transport and server reset for shared desktops, both
+      off by default at build time.
+    - Resize/damage, border and Composite correctness fixes.
+    - GLX visual fixes for QtWebEngine and glmark2.
+    - RANDR CRTC mode hotplug relight.
+
+ -- Jos Dehaes <jos.dehaes@gmail.com>  Tue, 22 Sep 2026 12:00:00 +0200
+
 yserver (1.5.1-1) unstable; urgency=medium
 
   * New upstream release 1.5.1.
