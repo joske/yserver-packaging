@@ -113,5 +113,5 @@ doc() {
 
 # Regenerate with `abuild checksum` on every pkgver bump.
 sha512sums="
-53778780cea8926c5273abdc3379efbec6026a03b977da1a0c257b4912f09c8b70d36ebbb422870e38dfc52047e0931e212b8deba122ccda3797a730d04fb766  yserver-1.5.1.tar.gz
+c2adadeb085ba64ece454d68810292544cea7136e9813ace6415356032431f3c6338da892600a96656ec7d6a64c18a425e3a40ec497a0cfb3b625546f0012fb9  yserver-1.6.0.tar.gz
 "
