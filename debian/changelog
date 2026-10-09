@@ -1,3 +1,14 @@
+yserver (1.7.1-1) unstable; urgency=medium
+
+  * New upstream release 1.7.1.
+    - Fix a GPU hang and slowness with antialiased shapes and gradients on
+      slow GPUs (GTK file chooser).
+    - RENDER text no longer loses glyphs in long sessions.
+    - Windows uncovered by raise, move or close are redrawn like on Xorg.
+    - KDE Plasma stale highlights; XSendEvent to windows using XI2.
+
+ -- Jos Dehaes <jos.dehaes@gmail.com>  Fri, 09 Oct 2026 12:00:00 +0200
+
 yserver (1.7.0-1) unstable; urgency=medium
 
   * New upstream release 1.7.0.

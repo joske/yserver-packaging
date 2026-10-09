@@ -29,7 +29,7 @@
 %global crate_name yserver
 
 Name:           yserver
-Version:        1.7.0
+Version:        1.7.1
 Release:        1%{?dist}
 Summary:        A modern X11 server written from scratch in Rust (DRM/KMS + Vulkan)
 
@@ -188,6 +188,12 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 # so no package should claim ownership of it.
 
 %changelog
+* Fri Oct 09 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.7.1-1
+- New upstream release 1.7.1: fix a GPU hang and slowness with antialiased
+  shapes and gradients on slow GPUs (GTK file chooser); RENDER text no longer
+  loses glyphs in long sessions; windows uncovered by raise/move/close are
+  redrawn like on Xorg; KDE Plasma stale highlights; XSendEvent to XI2 windows
+
 * Mon Oct 05 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.7.0-1
 - New upstream release 1.7.0: CDE and old-style Motif/Xaw apps work and start
   fast; one XInput device per mouse, keyboard and touchpad; Vulkan 1.2 GPUs
