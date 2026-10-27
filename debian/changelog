@@ -3,6 +3,8 @@ yserver (1.8.0-1) unstable; urgency=medium
   * New upstream release 1.8.0.
     - Variable refresh rate (--vrr) and tearing on demand for fullscreen
       clients.
+    - --vrr all: VRR for NVIDIA clients too, honouring the NVIDIA and Mesa
+      application lists.
     - Hardware cursor and gamma on atomic KMS.
     - Multi-monitor and compositor fixes.
     - No more crash when a window tree is destroyed while in use.

@@ -190,7 +190,8 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %changelog
 * Tue Oct 27 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.8.0-1
 - New upstream release 1.8.0: variable refresh rate (--vrr) and tearing on
-  demand for fullscreen clients; hardware cursor and gamma on atomic KMS;
+  demand for fullscreen clients; --vrr all for NVIDIA clients, honouring the
+  NVIDIA and Mesa application lists; hardware cursor and gamma on atomic KMS;
   multi-monitor and compositor fixes; no more crash when a window tree is
   destroyed while in use; clipboard and selection events follow Xorg; a second
   window manager is refused
