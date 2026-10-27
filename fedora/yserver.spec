@@ -29,7 +29,7 @@
 %global crate_name yserver
 
 Name:           yserver
-Version:        1.7.1
+Version:        1.8.0
 Release:        1%{?dist}
 Summary:        A modern X11 server written from scratch in Rust (DRM/KMS + Vulkan)
 
@@ -188,6 +188,13 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 # so no package should claim ownership of it.
 
 %changelog
+* Tue Oct 27 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.8.0-1
+- New upstream release 1.8.0: variable refresh rate (--vrr) and tearing on
+  demand for fullscreen clients; hardware cursor and gamma on atomic KMS;
+  multi-monitor and compositor fixes; no more crash when a window tree is
+  destroyed while in use; clipboard and selection events follow Xorg; a second
+  window manager is refused
+
 * Fri Oct 09 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.7.1-1
 - New upstream release 1.7.1: fix a GPU hang and slowness with antialiased
   shapes and gradients on slow GPUs (GTK file chooser); RENDER text no longer
