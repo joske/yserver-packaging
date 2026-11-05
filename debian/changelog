@@ -1,3 +1,17 @@
+yserver (1.9.0-1) unstable; urgency=medium
+
+  * New upstream release 1.9.0.
+    - Window operations much faster on slow machines.
+    - Compositors that Present their own buffers get them flipped instead of
+      recomposited.
+    - xhost access control, and the first parts of an access control layer
+      for client isolation.
+    - Present keeps going when a monitor's vblank clock freezes.
+    - TCP listens on IPv6 too.
+    - Shaped windows and XFIXES/SHAPE regions follow Xorg.
+
+ -- Jos Dehaes <jos.dehaes@gmail.com>  Thu, 05 Nov 2026 14:00:00 +0100
+
 yserver (1.8.0-1) unstable; urgency=medium
 
   * New upstream release 1.8.0.

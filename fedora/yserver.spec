@@ -29,7 +29,7 @@
 %global crate_name yserver
 
 Name:           yserver
-Version:        1.8.0
+Version:        1.9.0
 Release:        1%{?dist}
 Summary:        A modern X11 server written from scratch in Rust (DRM/KMS + Vulkan)
 
@@ -188,6 +188,13 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 # so no package should claim ownership of it.
 
 %changelog
+* Thu Nov 05 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.9.0-1
+- New upstream release 1.9.0: window operations much faster on slow machines;
+  compositors that Present their own buffers get them flipped instead of
+  recomposited; xhost access control and the first parts of an access control
+  layer; Present keeps going when a monitor's vblank clock freezes; TCP listens
+  on IPv6 too; shaped windows and XFIXES/SHAPE regions follow Xorg
+
 * Tue Oct 27 2026 Jos Dehaes <jos.dehaes@gmail.com> - 1.8.0-1
 - New upstream release 1.8.0: variable refresh rate (--vrr) and tearing on
   demand for fullscreen clients; --vrr all for NVIDIA clients, honouring the
